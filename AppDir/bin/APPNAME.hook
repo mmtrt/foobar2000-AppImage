@@ -293,19 +293,27 @@ _wineprefix_dedup_symlink() {
 }
 
 # 1) Template first (shared trees), 2) app prefix, 3) link
-_wineprefix_ensure_template
+# Under AppRun's set -e, a non-zero return would abort the whole AppImage
+# (foobar2000#14: WARN "dedup skipped" then immediate quit). Always continue.
+_wineprefix_ensure_template || true
 
 _app_fresh_prefix=0
 if [ ! -f "$WINEPREFIX/system.reg" ]; then
 	# Same nested-AppImage LD_* cleanup as template wineboot (anylinux.so)
 	env -u LD_LIBRARY_PATH -u LD_PRELOAD -u LD_AUDIT \
-		DISABLE_AUTO_UPDATES=1 "$WINELOADER" wineboot --init 2>&3
+		DISABLE_AUTO_UPDATES=1 "$WINELOADER" wineboot --init 2>&3 || true
 	env -u LD_LIBRARY_PATH -u LD_PRELOAD -u LD_AUDIT \
 		DISABLE_AUTO_UPDATES=1 "$WINELOADER" wineserver -w 2>&3 || true
-	_app_fresh_prefix=1
+	if [ -f "$WINEPREFIX/system.reg" ]; then
+		_app_fresh_prefix=1
+	else
+		echo "ERROR: wineboot failed to create WINEPREFIX at $WINEPREFIX" >&2
+		echo "ERROR: Try: DISABLE_AUTO_UPDATES=1 \"$WINELOADER\" wineboot --init" >&2
+		exit 1
+	fi
 fi
 
-_wineprefix_dedup_symlink "$WINEPREFIX"
+_wineprefix_dedup_symlink "$WINEPREFIX" || true
 
 # AppData redirect: symlink each profile's AppData to
 # $DATADIR/wine-appimage/data/$APPNAME/AppData so settings survive prefix
